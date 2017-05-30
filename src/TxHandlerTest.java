@@ -1,6 +1,9 @@
 import static org.junit.Assert.*;
 
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.security.SignatureException;
 import java.util.ArrayList;
 
 import org.junit.After;
@@ -208,7 +211,7 @@ public class TxHandlerTest {
 	public final void testIsValidTx_OutputValNegative() {
 		
 	}
-	
+		
 	/**
 	 * Test method for {@link TxHandler#handleTxs(Transaction[])}. Straight
 	 * positive test (tx #1 with 1 valid UTXO, tx #2 with 3 valid UTXOs)

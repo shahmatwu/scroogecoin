@@ -37,10 +37,11 @@ public class TxHandler {
 		// remember each validated UTXO in order to detect duplicate claims
 		ArrayList<UTXO> validatedUTXOs = new ArrayList<UTXO>();
 		double inputSum = 0.00, outputSum = 0.00;
-		double txoVal;
+//		double txoVal;
 
 		for (Transaction.Input input : tx.getInputs()) {
-
+			int inputIndex = tx.getInputs().indexOf(input);
+			
 			utxo = new UTXO(input.prevTxHash, input.outputIndex);
 
 			// verify this UTXO not already in the list of remembered UTXOs
@@ -57,18 +58,26 @@ public class TxHandler {
 
 			// verify the signature of that prev tx's output
 			Transaction.Output txo = myPool.getTxOutput(utxo);
-			if (!Crypto.verifySignature(txo.address, tx.getRawDataToSign(utxo.getIndex()), input.signature)) {
+			if (!Crypto.verifySignature(txo.address, tx.getRawDataToSign(inputIndex), input.signature)) {
 				return false;
 			}
 
-			// verify output value is non-negative
-			txoVal = txo.value;
-			inputSum += txoVal;
-			if (Double.compare(txoVal, 0.00) < 0) {
+//			// verify output value is non-negative
+			inputSum += txo.value;
+//			if (Double.compare(txoVal, 0.00) < 0) {
+//				return false;
+//			}
+			
+		}
+
+		// verify that all output values are non-negative
+		for (Transaction.Output output : tx.getOutputs()) {
+			double txValue = output.value;
+			if (Double.compare(txValue, 0.00) < 0) {
 				return false;
 			}
 		}
-
+		
 		// verify that sum of inputs >= sum of outputs
 		for (Transaction.Output output : tx.getOutputs()) {
 			outputSum += output.value;
@@ -87,17 +96,53 @@ public class TxHandler {
 	 * UTXO pool as appropriate.
 	 */
 	public Transaction[] handleTxs(Transaction[] possibleTxs) {
-
+		Transaction[] validTxs;
+		ArrayList<Transaction> validatedTxs = new ArrayList<>();
+		UTXO utxo = null;
+//		int idx = 0; // counter for index values
+		
+		// do a first pass to process tx's that are independently valid
 		for (Transaction tx : possibleTxs) {
-
-			boolean txIsValid = true;
-
-			for (Transaction.Input claimedInput : tx.getInputs()) {
-
-				System.out.println("tx.input: " + tx.toString() + " : " + claimedInput.toString());
+			
+			if (isValidTx(tx)) {
+				
+				for (Transaction.Input input : tx.getInputs()) {
+					utxo = new UTXO(input.prevTxHash, input.outputIndex);
+					myPool.removeUTXO(utxo);
+				}
+				
+				for (int idx = 0; idx < tx.numOutputs(); idx++) {
+					myPool.addUTXO(new UTXO(tx.getHash(), idx), tx.getOutput(idx));
+				}
 			}
-
+			validatedTxs.add(tx);
 		}
+		
+		// second pass to find tx's that were valid but depended on others in the same block
+		for (Transaction tx : possibleTxs) {
+			
+			// don't re-process tx's that were already independently valid
+			if (!validatedTxs.contains(tx)) {
+				continue;
+			}
+			
+			if (isValidTx(tx)) {
+				for (Transaction.Input input : tx.getInputs()) {
+					utxo = new UTXO(input.prevTxHash, input.outputIndex);
+					myPool.removeUTXO(utxo);
+				}
+				
+				for (int idx = 0; idx < tx.numOutputs(); idx++) {
+					myPool.addUTXO(new UTXO(tx.getHash(), idx), tx.getOutput(idx));
+				}
+			}
+			validatedTxs.add(tx);
+		}
+		
+		// convert ArrayList to the return Transactions array
+		validTxs = new Transaction[validatedTxs.size()];
+		validatedTxs.toArray(validTxs);
+		
 		return possibleTxs;
 	}
 
